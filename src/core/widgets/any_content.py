@@ -33,17 +33,14 @@ class AnyContentWidget(BaseWidget):
             {"task": "这里是第十个示例任务", "completed": False, "next_step": "", "all_step": ""}
         ]
         self._init_view()
-        self._show_current_task_business()
+        self._current_task_index = LiveData(-1)
 
-    def _handle_next_step_input(self):
-        # 处理用户输入来跳过当前任务
-        input_text = self._next_step.toPlainText().strip()
-        if input_text:
-            current_all_step = self._current_task_all_step.value
-            if current_all_step != "":
-                current_all_step += "\n"
-            self._current_task_all_step.on_next(current_all_step + f"{input_text}")
-            self._enter_next_uncheck_task()
+        self._show_current_task_title_business()
+        self._next_step_business()
+        self._show_current_step_business()
+        self._complete_current_task_business()
+
+        self._current_task_index.on_next(0)
 
     def _enter_next_uncheck_task(self):
         start_index = (self._current_task_index.value + 1) % len(self._task_list)
@@ -52,12 +49,6 @@ class AnyContentWidget(BaseWidget):
                 self._current_task_index.on_next(index)
                 return
         self._current_task_index.on_next(-1)
-
-    def _update_steps_and_scroll(self, steps):
-        """更新步骤文本并自动滚动到底部"""
-        self._current_step.setPlainText(steps)
-        self._current_step.verticalScrollBar().setValue(
-            self._current_step.verticalScrollBar().maximum())
 
     # noinspection PyUnresolvedReferences
     def _complete_current_task_business(self):
@@ -95,7 +86,17 @@ class AnyContentWidget(BaseWidget):
         self._current_task_next_step.subscribe(
             lambda x: self._next_step.setPlainText(x))
 
-        self._next_step.taskSubmitted.connect(self._handle_next_step_input)
+        def handle_next_step_input():
+            # 处理用户输入来跳过当前任务
+            input_text = self._next_step.toPlainText().strip()
+            if input_text:
+                current_all_step = self._current_task_all_step.value
+                if current_all_step != "":
+                    current_all_step += "\n"
+                self._current_task_all_step.on_next(current_all_step + f"{input_text}")
+                self._enter_next_uncheck_task()
+
+        self._next_step.taskSubmitted.connect(handle_next_step_input)
 
         self._next_step.taskSubmitted.connect(
             lambda: self._current_task_next_step.on_next(self._next_step.toPlainText()))
@@ -107,16 +108,6 @@ class AnyContentWidget(BaseWidget):
                 self._current_task_next_step.on_next(self._task_list[index]["next_step"])
 
         self._current_task_index.pipe(ops.distinct_until_changed()).subscribe(lambda x: update_current_task(x))
-
-    def _show_current_task_business(self):
-        self._current_task_index = LiveData(-1)
-
-        self._show_current_task_title_business()
-        self._next_step_business()
-        self._show_current_step_business()
-        self._complete_current_task_business()
-
-        self._current_task_index.on_next(0)
 
     def _show_current_task_title_business(self):
         self._current_task_title.pipe(ops.distinct_until_changed()).subscribe(lambda x: self._label.setText(x))
@@ -132,10 +123,16 @@ class AnyContentWidget(BaseWidget):
     def _show_current_step_business(self):
         self._current_task_all_step = LiveData("默认任务没有什么步骤")
 
+        def update_steps_and_scroll(steps):
+            """更新步骤文本并自动滚动到底部"""
+            self._current_step.setPlainText(steps)
+            self._current_step.verticalScrollBar().setValue(
+                self._current_step.verticalScrollBar().maximum())
+
         # 绑定所有步骤，并自动滚动到最后
         self._current_task_all_step.pipe(
             ops.distinct_until_changed()
-        ).subscribe(self._update_steps_and_scroll)
+        ).subscribe(update_steps_and_scroll)
 
         def update_all_step(all_step: str):
             self._task_list[self._current_task_index.value]["all_step"] = all_step
